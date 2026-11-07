@@ -722,9 +722,21 @@ ${ERROR_TYPES.join('、')}
   }
 
   function parseJson(text) {
-    try { return JSON.parse(text); } catch (e) {}
-    const m = String(text).match(/\{[\s\S]*\}/);
-    if (m) { try { return JSON.parse(m[0]); } catch (e2) {} }
+    if (!text) return null;
+    let s = String(text).trim();
+    // 去掉 markdown 代码围栏（```json ... ```）等包装
+    s = s.replace(/```[a-zA-Z]*\s*/g, '').replace(/```/g, '').trim();
+    // 直接解析
+    try { return JSON.parse(s); } catch (e) {}
+    // 截取第一个 { 到最后一个 }（容忍前后多余文字）
+    const a = s.indexOf('{');
+    const b = s.lastIndexOf('}');
+    if (a !== -1 && b > a) {
+      const sub = s.slice(a, b + 1);
+      try { return JSON.parse(sub); } catch (e2) {}
+      // 常见错误：JSON 末尾多了逗号，去掉后重试
+      try { return JSON.parse(sub.replace(/,\s*([}\]])/g, '$1')); } catch (e3) {}
+    }
     return null;
   }
 
@@ -771,7 +783,6 @@ ${ERROR_TYPES.join('、')}
         body: JSON.stringify({
           model: s.model,
           messages: [{ role: 'user', content }],
-          response_format: { type: 'json_object' },
           temperature: 0.2,
           max_tokens: 2000,
         }),
@@ -787,8 +798,15 @@ ${ERROR_TYPES.join('、')}
       }
       const data = await res.json();
       const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-      const parsed = parseJson(text || '');
-      if (!parsed) { throw new Error('AI 返回的内容无法解析，请重试一次'); }
+      if (!text) {
+        console.error('AI 响应异常：', JSON.stringify(data).slice(0, 600));
+        throw new Error('AI 没有返回内容：可能模型名不对或不支持图片，请检查设置里的模型');
+      }
+      const parsed = parseJson(text);
+      if (!parsed) {
+        console.error('AI 原始返回：', text);
+        throw new Error('AI 返回的内容无法解析，请重试一次');
+      }
       applyAnalysis(parsed);
       toast('✅ 分析完成！请检查下面自动填写的内容');
     } catch (e) {
