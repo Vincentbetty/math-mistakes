@@ -783,8 +783,10 @@ ${ERROR_TYPES.join('、')}
         body: JSON.stringify({
           model: s.model,
           messages: [{ role: 'user', content }],
+          thinking: { type: 'disabled' },
+          response_format: { type: 'json_object' },
           temperature: 0.2,
-          max_tokens: 2000,
+          max_tokens: 4000,
         }),
       });
       if (!res.ok) {
@@ -797,10 +799,12 @@ ${ERROR_TYPES.join('、')}
         throw new Error(msg);
       }
       const data = await res.json();
-      const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+      const msg = data.choices && data.choices[0] && data.choices[0].message;
+      // 优先取 content，若为空则退而取 reasoning_content（思考模型可能把答案放在这里）
+      const text = (msg && msg.content) || (msg && msg.reasoning_content);
       if (!text) {
         console.error('AI 响应异常：', JSON.stringify(data).slice(0, 600));
-        throw new Error('AI 没有返回内容：可能模型名不对或不支持图片，请检查设置里的模型');
+        throw new Error('AI 没有返回内容：可能是 API Key 不对或余额不足，请检查设置');
       }
       const parsed = parseJson(text);
       if (!parsed) {
